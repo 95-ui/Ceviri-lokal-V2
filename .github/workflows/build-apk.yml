@@ -19,7 +19,7 @@ jobs:
           distribution: 'temurin'
           java-version: '17'
 
-      - name: Setup Node.js 20 (mit Warnung umgehen)
+      - name: Setup Node.js 20
         uses: actions/setup-node@v4
         with:
           node-version: 20
@@ -27,8 +27,8 @@ jobs:
         env:
           ACTIONS_ALLOW_USE_UNSECURE_NODE_VERSION: true
 
-      - name: Install Dependencies
-        run: npm install   # <-- Hier geändert von "npm ci"
+      - name: Install Dependencies & Generate lock file
+        run: npm install
 
       - name: Create Icons
         run: python3 make_icons.py || echo "Icons step skipped"
@@ -38,7 +38,7 @@ jobs:
         env:
           EXPO_PACKAGE_NAME: de.ceviri.lokal
 
-      - name: Create Bundle (wichtiger Fix)
+      - name: Create Bundle
         run: |
           mkdir -p android/app/src/main/assets
           npx react-native bundle \
