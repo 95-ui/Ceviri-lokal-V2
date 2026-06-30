@@ -40,10 +40,10 @@ jobs:
           cd ceviri-lokal-v2
           python3 make_icons.py
 
-      - name: Expo Prebuild
+      - name: Expo Prebuild (mit Fix)
         run: |
           cd ceviri-lokal-v2
-          npx expo prebuild --platform android --clean
+          npx expo prebuild --platform android --clean --no-install
         env:
           EXPO_PACKAGE_NAME: de.ceviri.lokal
 
