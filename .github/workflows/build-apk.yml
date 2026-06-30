@@ -1,0 +1,60 @@
+name: Build APK
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:   # Manuell starten möglich
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Java 17 Setup
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+
+      - name: Install Dependencies
+        run: npm ci
+
+      - name: Create Icons
+        run: python3 make_icons.py
+
+      - name: Expo Prebuild
+        run: npx expo prebuild --platform android --clean
+        env:
+          EXPO_PACKAGE_NAME: de.ceviri.lokal
+
+      - name: Create Bundle (wichtiger Fix)
+        run: |
+          mkdir -p android/app/src/main/assets
+          npx react-native bundle \
+            --platform android \
+            --dev false \
+            --entry-file index.js \
+            --bundle-output android/app/src/main/assets/index.android.bundle \
+            --assets-dest android/app/src/main/res
+
+      - name: Build APK
+        run: |
+          cd android
+          chmod +x gradlew
+          ./gradlew assembleDebug --max-workers 2
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: ceviri-lokal-apk
+          path: android/app/build/outputs/apk/debug/app-debug.apk
+          retention-days: 30
