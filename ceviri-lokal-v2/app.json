@@ -1,0 +1,39 @@
+{
+  "expo": {
+    "name": "CeviriLokal",
+    "slug": "cevirilokal",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "dark",
+    "backgroundColor": "#05080f",
+    "splash": {
+      "image": "./assets/splash.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#05080f"
+    },
+    "android": {
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#05080f"
+      },
+      "package": "de.ceviri.lokal",
+      "versionCode": 1,
+      "permissions": [
+        "android.permission.CAMERA",
+        "android.permission.READ_EXTERNAL_STORAGE",
+        "android.permission.WRITE_EXTERNAL_STORAGE",
+        "android.permission.INTERNET"
+      ]
+    },
+    "plugins": [
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Erlaubt CeviriLokal Fotos fuer die Texterkennung zu verwenden.",
+          "cameraPermission": "Erlaubt CeviriLokal die Kamera fuer die Texterkennung zu verwenden."
+        }
+      ]
+    ]
+  }
+}
