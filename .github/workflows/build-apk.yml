@@ -24,18 +24,15 @@ jobs:
         env:
           ACTIONS_ALLOW_USE_UNSECURE_NODE_VERSION: true
 
-      - name: Go to project folder
-        run: cd ceviri-lokal-v2
-
-      - name: Install Dependencies & Generate lockfile
+      - name: Go to project folder & Install Dependencies
         run: |
           cd ceviri-lokal-v2
           npm install
 
-      - name: Create Icons
+      - name: Create Icons (wichtig vor Prebuild!)
         run: |
           cd ceviri-lokal-v2
-          python3 make_icons.py || echo "Icons skipped"
+          python3 make_icons.py
 
       - name: Expo Prebuild
         run: |
