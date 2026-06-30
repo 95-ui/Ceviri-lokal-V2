@@ -24,19 +24,29 @@ jobs:
         env:
           ACTIONS_ALLOW_USE_UNSECURE_NODE_VERSION: true
 
+      - name: Go to project folder
+        run: cd ceviri-lokal-v2
+
       - name: Install Dependencies & Generate lockfile
-        run: npm install
+        run: |
+          cd ceviri-lokal-v2
+          npm install
 
       - name: Create Icons
-        run: python3 make_icons.py || echo "Icons skipped"
+        run: |
+          cd ceviri-lokal-v2
+          python3 make_icons.py || echo "Icons skipped"
 
       - name: Expo Prebuild
-        run: npx expo prebuild --platform android --clean
+        run: |
+          cd ceviri-lokal-v2
+          npx expo prebuild --platform android --clean
         env:
           EXPO_PACKAGE_NAME: de.ceviri.lokal
 
       - name: Create Bundle
         run: |
+          cd ceviri-lokal-v2
           mkdir -p android/app/src/main/assets
           npx react-native bundle \
             --platform android \
@@ -47,7 +57,7 @@ jobs:
 
       - name: Build APK
         run: |
-          cd android
+          cd ceviri-lokal-v2/android
           chmod +x gradlew
           ./gradlew assembleDebug --max-workers 2 --stacktrace
 
@@ -55,5 +65,5 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: ceviri-lokal-apk
-          path: android/app/build/outputs/apk/debug/app-debug.apk
+          path: ceviri-lokal-v2/android/app/build/outputs/apk/debug/app-debug.apk
           retention-days: 30
