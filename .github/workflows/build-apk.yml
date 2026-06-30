@@ -17,6 +17,12 @@ jobs:
           distribution: 'temurin'
           java-version: '17'
 
+      - name: Setup Python & Pillow
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y python3-pip
+          pip3 install Pillow --break-system-packages || pip3 install Pillow
+
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
@@ -29,7 +35,7 @@ jobs:
           cd ceviri-lokal-v2
           npm install
 
-      - name: Create Icons (wichtig vor Prebuild!)
+      - name: Create Icons
         run: |
           cd ceviri-lokal-v2
           python3 make_icons.py
