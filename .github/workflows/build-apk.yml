@@ -17,20 +17,15 @@ jobs:
           distribution: 'temurin'
           java-version: '17'
 
-      - name: Setup Python & Pillow
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y python3-pip
-          pip3 install Pillow --break-system-packages || pip3 install Pillow
-
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 20
-        env:
-          ACTIONS_ALLOW_USE_UNSECURE_NODE_VERSION: true
+          node-version: 18
 
-      - name: Go to project folder & Install Dependencies
+      - name: Setup Python & Pillow
+        run: pip3 install Pillow --break-system-packages
+
+      - name: Install Dependencies
         run: |
           cd ceviri-lokal-v2
           npm install
@@ -40,14 +35,20 @@ jobs:
           cd ceviri-lokal-v2
           python3 make_icons.py
 
-      - name: Expo Prebuild (mit Fix)
+      - name: Expo Prebuild
         run: |
           cd ceviri-lokal-v2
-          npx expo prebuild --platform android --clean --no-install
+          npx expo prebuild --platform android --clean
         env:
-          EXPO_PACKAGE_NAME: de.ceviri.lokal
+          EXPO_NO_TELEMETRY: 1
 
-      - name: Create Bundle
+      - name: Fix Gradle wrapper version
+        run: |
+          cd ceviri-lokal-v2/android
+          sed -i 's|gradle-.*-all.zip|gradle-8.0.2-all.zip|g' gradle/wrapper/gradle-wrapper.properties
+          cat gradle/wrapper/gradle-wrapper.properties
+
+      - name: Create JS Bundle
         run: |
           cd ceviri-lokal-v2
           mkdir -p android/app/src/main/assets
@@ -62,7 +63,9 @@ jobs:
         run: |
           cd ceviri-lokal-v2/android
           chmod +x gradlew
-          ./gradlew assembleDebug --max-workers 2 --stacktrace
+          ./gradlew assembleDebug --max-workers 2
+        env:
+          JAVA_HOME: ${{ env.JAVA_HOME }}
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
