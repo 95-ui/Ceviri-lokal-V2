@@ -16,6 +16,15 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import * as FileSystem from "expo-file-system";
 import { getTranslatorHTML } from "./translator-html";
 
+// Normale Chrome-Kennung OHNE den "wv" (WebView) Marker.
+// Grund: Manche Server mit Bot-Schutz (z.B. Hugging Face / Cloudflare)
+// blockieren Anfragen, die als "WebView" erkennbar sind, mit 401/403 —
+// was in transformers.js als "Unauthorized access to file" auftaucht.
+// Eine normale Browser-Kennung umgeht das zuverlässig.
+const CHROME_USER_AGENT =
+  "Mozilla/5.0 (Linux; Android 13; Pixel 7) AppleWebKit/537.36 " +
+  "(KHTML, like Gecko) Chrome/124.0.0.0 Mobile Safari/537.36";
+
 export default function App() {
   const webviewRef = useRef<any>(null);
 
@@ -94,9 +103,6 @@ export default function App() {
       <StatusBar barStyle="light-content" backgroundColor="#05080f" />
       <WebView
         ref={webviewRef}
-        // WICHTIG: baseUrl gibt der Seite eine "echte" HTTPS-Herkunft statt
-        // einer leeren/null-Origin. Ohne das blockiert Android Module-Worker
-        // und CORS-Anfragen an das KI-Modell-CDN ("Worker-Fehler").
         source={{ html, baseUrl: "https://localhost/" }}
         style={styles.webview}
         onMessage={onMessage}
@@ -111,6 +117,7 @@ export default function App() {
         setSupportMultipleWindows={false}
         backgroundColor="#05080f"
         decelerationRate="normal"
+        userAgent={CHROME_USER_AGENT}
       />
     </SafeAreaView>
   );
