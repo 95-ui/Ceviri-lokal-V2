@@ -30,8 +30,8 @@
       [
         "expo-image-picker",
         {
-          "photosPermission": "Erlaubt CeviriLokal Fotos fuer die Texterkennung zu verwenden.",
-          "cameraPermission": "Erlaubt CeviriLokal die Kamera fuer die Texterkennung zu verwenden."
+          "photosPermission": "Fuer die Texterkennung.",
+          "cameraPermission": "Fuer die Texterkennung."
         }
       ]
     ]
