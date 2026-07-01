@@ -499,7 +499,11 @@ function dlModel(id){
     var pct=vals.length?Math.round(vals.reduce(function(a,b){return a+b},0)/vals.length*100):0;
     dlf.style.width=Math.max(2,pct)+'%'; dlm.textContent=pct+'% — '+(d.file?d.file.split('/').pop():'');
   };
-  tw.onerror=function(){dlm.textContent='Fehler';tw.terminate();};
+  tw.onerror=function(e){
+  var detail = (e && (e.message||e.filename)) ? (e.message||'')+(e.filename?(' @ line '+e.lineno):'') : 'Unbekannt';
+  meta.textContent='Fehler: '+detail;
+  tw.terminate();
+};
 }
 
 function activate(id){
