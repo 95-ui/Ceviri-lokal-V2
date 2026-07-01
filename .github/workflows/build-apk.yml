@@ -23,7 +23,7 @@ jobs:
           node-version: 18
 
       - name: Setup Python & Pillow
-        run: pip3 install Pillow --break-system-packages
+        run: pip3 install Pillow 
 
       - name: Install Dependencies
         run: |
