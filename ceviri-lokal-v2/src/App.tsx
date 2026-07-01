@@ -94,7 +94,10 @@ export default function App() {
       <StatusBar barStyle="light-content" backgroundColor="#05080f" />
       <WebView
         ref={webviewRef}
-        source={{ html }}
+        // WICHTIG: baseUrl gibt der Seite eine "echte" HTTPS-Herkunft statt
+        // einer leeren/null-Origin. Ohne das blockiert Android Module-Worker
+        // und CORS-Anfragen an das KI-Modell-CDN ("Worker-Fehler").
+        source={{ html, baseUrl: "https://localhost/" }}
         style={styles.webview}
         onMessage={onMessage}
         javaScriptEnabled={true}
@@ -105,6 +108,7 @@ export default function App() {
         allowUniversalAccessFromFileURLs={true}
         allowFileAccessFromFileURLs={true}
         allowFileAccess={true}
+        setSupportMultipleWindows={false}
         backgroundColor="#05080f"
         decelerationRate="normal"
       />
@@ -115,4 +119,3 @@ export default function App() {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: "#05080f" },
   webview:   { flex: 1, backgroundColor: "#05080f" },
-});
