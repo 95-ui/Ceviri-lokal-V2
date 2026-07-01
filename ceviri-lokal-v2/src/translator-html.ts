@@ -429,7 +429,14 @@ worker.onmessage = function(ev){
     if(xRej){xRej(new Error(m.error));xRej=null;}
   }
 };
-worker.onerror = function(){ showErr('Worker-Fehler.'); setDot('err','Fehler'); };
+worker.onerror = function(e){
+  var detail = (e && (e.message || e.error || e.filename)) ?
+    (e.message||'') + (e.filename?(' @ '+e.filename+':'+e.lineno):'') :
+    'Unbekannt';
+  showErr('Worker-Fehler: ' + detail);
+  setDot('err','Fehler');
+};
+ 
 
 // ── INIT ───────────────────────────────────────────────────────────
 function init(){
