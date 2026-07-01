@@ -1,6 +1,8 @@
 // Die gesamte Übersetzer-Oberfläche als TypeScript-String.
-// So wird sie direkt in den JS-Bundle eingebettet — kein Asset-Loading nötig.
-// Das vermeidet den "Unable to load script" / "index.android.bundle" Fehler.
+// v3: KEIN Web Worker mehr! Läuft direkt im Hauptthread.
+// Grund: Module-Worker aus Blob-URLs sind in manchen Android-WebViews
+// instabil und liefern nur "Worker-Fehler: Unbekannt" ohne Details.
+// Direkter Aufruf umgeht dieses Kompatibilitätsproblem zuverlässig.
 
 export function getTranslatorHTML(): string {
   return `<!doctype html>
@@ -103,7 +105,7 @@ textarea:focus{border-color:rgba(45,212,191,.4)}
 /* ERROR */
 .err-box{display:none;padding:11px;border-radius:var(--rs);
   background:rgba(248,113,113,.08);border:1px solid rgba(248,113,113,.3);
-  color:#fca5a5;font-size:13px}
+  color:#fca5a5;font-size:13px;word-break:break-word}
 .err-box.on{display:block}
 
 /* STATUS */
@@ -143,7 +145,7 @@ textarea:focus{border-color:rgba(45,212,191,.4)}
 .dl-track{height:5px;background:rgba(255,255,255,.1);border-radius:999px;overflow:hidden;margin:5px 0 3px}
 .dl-fill{height:100%;width:0%;background:linear-gradient(90deg,var(--teal),var(--teal2));
   border-radius:999px;transition:width .3s}
-.dl-meta{font-size:12px;color:var(--muted)}
+.dl-meta{font-size:12px;color:var(--muted);word-break:break-word}
 .use-btn{width:100%;padding:11px;font-size:14px;font-weight:700;border:none;
   border-radius:var(--rs);cursor:pointer;
   background:linear-gradient(90deg,var(--teal),var(--teal2));color:#05080f}
@@ -363,7 +365,6 @@ var fontSize = 15;
 var activeModel = 'opus';
 var dlDone = {opus:false, nllb:false};
 var pfMap = {};
-var xRes = null, xRej = null;
 
 var MODELS = {
   opus: {
@@ -381,74 +382,93 @@ var LANGS = {
   'tr-de': {s:'Türkisch', t:'Deutsch',  speak:'de-DE', ocr:'tur'}
 };
 
-// ── WORKER ─────────────────────────────────────────────────────────
-var WC = "let _lib=null,_pipes={};"+
-"async function lib(){if(!_lib){_lib=await import('https://cdn.jsdelivr.net/npm/@huggingface/transformers@3');"+
-"_lib.env.allowLocalModels=false;_lib.env.useBrowserCache=true;}return _lib;}"+
-"async function getPipe(n,d,cb){var k=n+d;if(!_pipes[k]){var l=await lib();"+
-"_pipes[k]=await l.pipeline('translation',n,{dtype:d,progress_callback:cb});}return _pipes[k];}"+
-"function chunk(t){var ps=t.split(/\\n+/),out=[];for(var p of ps){if(!p.trim())continue;"+
-"if(p.length<=380){out.push(p);continue;}var ss=p.match(/[^.!?\\n]+[.!?\\n]*/g)||[p],c='';"+
-"for(var s of ss){if((c+s).length>380){if(c)out.push(c);c=s;}else c+=s;}if(c)out.push(c);}"+
-"return out.length?out:[t];}"+
-"self.onmessage=async e=>{var m=e.data;try{"+
-"if(m.type==='preload'){await getPipe(m.mn,m.dt,x=>self.postMessage({s:'prog',d:x}));self.postMessage({s:'ready'});}"+
-"else if(m.type==='translate'){var pipe=await getPipe(m.mn,m.dt,x=>self.postMessage({s:'prog',d:x}));"+
-"self.postMessage({s:'xlating'});var parts=chunk(m.text),res=[];"+
-"for(var p of parts){var opts=m.src?{src_lang:m.src,tgt_lang:m.tgt}:{};"+
-"var out=await pipe(p,opts);var t=Array.isArray(out)?out.map(o=>o.translation_text).join(' '):(out.translation_text||'');"+
-"res.push(t.trim());}self.postMessage({s:'result',text:res.join('\\n')});}}"+
-"catch(err){self.postMessage({s:'error',error:String(err&&err.message?err.message:err)});}};";
+// ── KI-ENGINE (kein Worker mehr — läuft direkt hier) ─────────────────
+// Grund: Module-Worker aus Blob-URLs sind auf manchen Android-WebViews
+// instabil (liefern nur "Script error" ohne Details). Direkter Aufruf
+// ist zuverlässiger, auch wenn die Oberfläche während der Berechnung
+// kurz weniger flüssig ist.
+var _lib = null;
+var _pipes = {};
 
-var worker = new Worker(
-  URL.createObjectURL(new Blob([WC],{type:'text/javascript'})),
-  {type:'module'}
-);
-
-worker.onmessage = function(ev){
-  var m = ev.data;
-  if(m.s==='prog'){
-    var d=m.d||{};
-    if(typeof d.progress==='number'&&d.file) pfMap[d.file]=d.progress;
-    if(d.status==='done'&&d.file) pfMap[d.file]=1;
-    var vals=Object.values(pfMap);
-    var pct=vals.length?Math.round(vals.reduce(function(a,b){return a+b},0)/vals.length*100):0;
-    var lbl=d.file?d.file.split('/').pop():'Lädt …';
-    setProg(true,pct,lbl); setDot('busy','Lädt: '+lbl);
-  } else if(m.s==='ready'){
-    setProg(false); setDot('ready','Bereit — '+(activeModel==='opus'?'OPUS-MT':'NLLB-200'));
-    g('xbtn').disabled=false; setBusy(false);
-    dlDone[activeModel]=true; refreshMUI();
-  } else if(m.s==='xlating'){
-    setBusy(true); setDot('busy','Übersetzt …'); setOut('…',true);
-  } else if(m.s==='result'){
-    setOut(m.text||'',false); setBusy(false); setDot('ready','Fertig');
-    if(xRes){xRes(m.text);xRes=null;}
-  } else if(m.s==='error'){
-    showErr(m.error||'Fehler'); setBusy(false); setProg(false); setDot('err','Fehler');
-    if(xRej){xRej(new Error(m.error));xRej=null;}
+function lib(){
+  if(!_lib){
+    _lib = import('https://cdn.jsdelivr.net/npm/@huggingface/transformers@3')
+      .then(function(mod){
+        mod.env.allowLocalModels = false;
+        mod.env.useBrowserCache = true;
+        return mod;
+      });
   }
-};
-worker.onerror = function(e){
-  var detail = (e && (e.message || e.error || e.filename)) ?
-    (e.message||'') + (e.filename?(' @ '+e.filename+':'+e.lineno):'') :
-    'Unbekannt';
-  showErr('Worker-Fehler: ' + detail);
-  setDot('err','Fehler');
-};
- 
+  return _lib;
+}
+
+function getPipe(modelName, dtype, onProgress){
+  var key = modelName + dtype;
+  if(!_pipes[key]){
+    _pipes[key] = lib().then(function(mod){
+      return mod.pipeline('translation', modelName, {
+        dtype: dtype,
+        progress_callback: onProgress
+      });
+    });
+  }
+  return _pipes[key];
+}
+
+function chunkText(t){
+  var parts = t.split(/\\n+/), out = [];
+  for(var i=0;i<parts.length;i++){
+    var p = parts[i];
+    if(!p.trim()) continue;
+    if(p.length <= 380){ out.push(p); continue; }
+    var sents = p.match(/[^.!?\\n]+[.!?\\n]*/g) || [p], cur = '';
+    for(var j=0;j<sents.length;j++){
+      var s = sents[j];
+      if((cur+s).length > 380){ if(cur) out.push(cur); cur = s; } else cur += s;
+    }
+    if(cur) out.push(cur);
+  }
+  return out.length ? out : [t];
+}
 
 // ── INIT ───────────────────────────────────────────────────────────
 function init(){
   setDot('busy','Lädt OPUS-MT …'); setProg(true,0,'Initialisierung …');
   preload();
   if(window.ReactNativeWebView) window.ReactNativeWebView.postMessage(JSON.stringify({type:'ready'}));
+
+  window.addEventListener('error', function(e){
+    showErr('Skript-Fehler: ' + (e && e.message ? e.message : 'unbekannt'));
+    setDot('err','Fehler');
+  });
+  window.addEventListener('unhandledrejection', function(e){
+    var msg = e && e.reason ? (e.reason.message || String(e.reason)) : 'unbekannt';
+    showErr('Fehler: ' + msg);
+    setDot('err','Fehler');
+  });
 }
 
 function preload(){
-  var m=MODELS[activeModel], side=dir==='de-tr'?m.detr:m.trde;
-  pfMap={};
-  worker.postMessage({type:'preload',mn:side.name,dt:side.dtype});
+  var m = MODELS[activeModel], side = dir==='de-tr' ? m.detr : m.trde;
+  pfMap = {};
+  g('xbtn').disabled = true;
+  hideErr();
+  getPipe(side.name, side.dtype, function(d){
+    if(typeof d.progress==='number' && d.file) pfMap[d.file]=d.progress;
+    if(d.status==='done' && d.file) pfMap[d.file]=1;
+    var vals = Object.values(pfMap);
+    var pct = vals.length ? Math.round(vals.reduce(function(a,b){return a+b},0)/vals.length*100) : 0;
+    var lbl = d.file ? d.file.split('/').pop() : 'Lädt …';
+    setProg(true, pct, lbl); setDot('busy','Lädt: '+lbl);
+  }).then(function(){
+    setProg(false); setDot('ready','Bereit — '+(activeModel==='opus'?'OPUS-MT':'NLLB-200'));
+    g('xbtn').disabled=false;
+    dlDone[activeModel]=true; refreshMUI();
+  }).catch(function(err){
+    var msg = err && err.message ? err.message : String(err);
+    showErr('Modell-Ladefehler: ' + msg);
+    setDot('err','Fehler'); setProg(false);
+  });
 }
 
 // ── TABS ───────────────────────────────────────────────────────────
@@ -467,7 +487,8 @@ function swap(){
   src.value=oldOut;
   oldOut?setOut(oldSrc,false):setOut('',true);
   g('slbl').textContent=LANGS[dir].s; g('tlbl').textContent=LANGS[dir].t;
-  g('xbtn').disabled=true; setDot('busy','Wechselt …'); setProg(true,0,'Lädt …'); pfMap={}; preload();
+  setDot('busy','Wechselt …'); setProg(true,0,'Lädt …');
+  preload();
 }
 
 // ── MODEL UI ───────────────────────────────────────────────────────
@@ -482,28 +503,22 @@ function dlModel(id){
   var m=MODELS[id], side=dir==='de-tr'?m.detr:m.trde;
   var dlw=g('dlw-'+id), dlf=g('dlf-'+id), dlm=g('dlm-'+id);
   dlw.classList.add('on');
-  var tmp={};
-  var tc="self.onmessage=async e=>{var {mn,dt}=e.data;"+
-  "var lib=await import('https://cdn.jsdelivr.net/npm/@huggingface/transformers@3');"+
-  "lib.env.allowLocalModels=false;lib.env.useBrowserCache=true;"+
-  "await lib.pipeline('translation',mn,{dtype:dt,progress_callback:x=>self.postMessage(x)});"+
-  "self.postMessage({status:'done_all'});};";
-  var tw=new Worker(URL.createObjectURL(new Blob([tc],{type:'text/javascript'})),{type:'module'});
-  tw.postMessage({mn:side.name,dt:side.dtype});
-  tw.onmessage=function(ev){
-    var d=ev.data||{};
-    if(d.status==='done_all'){dlDone[id]=true;dlw.classList.remove('on');refreshMUI();tw.terminate();return;}
-    if(typeof d.progress==='number'&&d.file) tmp[d.file]=d.progress;
-    if(d.status==='done'&&d.file) tmp[d.file]=1;
-    var vals=Object.values(tmp);
-    var pct=vals.length?Math.round(vals.reduce(function(a,b){return a+b},0)/vals.length*100):0;
-    dlf.style.width=Math.max(2,pct)+'%'; dlm.textContent=pct+'% — '+(d.file?d.file.split('/').pop():'');
-  };
-  tw.onerror=function(e){
-  var detail = (e && (e.message||e.filename)) ? (e.message||'')+(e.filename?(' @ line '+e.lineno):'') : 'Unbekannt';
-  meta.textContent='Fehler: '+detail;
-  tw.terminate();
-};
+  dlm.textContent = '0%';
+  dlf.style.width = '2%';
+  getPipe(side.name, side.dtype, function(d){
+    var vals = Object.values(pfMap);
+    if(typeof d.progress==='number' && d.file) pfMap[d.file]=d.progress;
+    if(d.status==='done' && d.file) pfMap[d.file]=1;
+    vals = Object.values(pfMap);
+    var pct = vals.length ? Math.round(vals.reduce(function(a,b){return a+b},0)/vals.length*100) : 0;
+    dlf.style.width = Math.max(2,pct)+'%';
+    dlm.textContent = pct+'% — '+(d.file?d.file.split('/').pop():'');
+  }).then(function(){
+    dlDone[id]=true; dlw.classList.remove('on'); refreshMUI();
+  }).catch(function(err){
+    var msg = err && err.message ? err.message : String(err);
+    dlm.textContent = 'Fehler: ' + msg;
+  });
 }
 
 function activate(id){
@@ -517,9 +532,9 @@ function activate(id){
 
 function doActivate(id){
   activeModel=id;
-  g('xbtn').disabled=true;
   setDot('busy','Aktiviere '+(id==='opus'?'OPUS-MT':'NLLB-200')+'…');
-  setProg(true,0,'Lädt …'); pfMap={}; preload(); refreshMUI();
+  setProg(true,0,'Lädt …');
+  preload(); refreshMUI();
 }
 
 function refreshMUI(){
@@ -542,10 +557,24 @@ function doTranslate(){
   var text=g('src').value.trim(); if(!text) return;
   hideErr();
   var m=MODELS[activeModel], side=dir==='de-tr'?m.detr:m.trde;
-  new Promise(function(res,rej){
-    xRes=res; xRej=rej;
-    worker.postMessage({type:'translate',text:text,mn:side.name,dt:side.dtype,
-      src:side.src||null,tgt:side.tgt||null});
+  setBusy(true); setDot('busy','Übersetzt …'); setOut('…', true);
+
+  getPipe(side.name, side.dtype, function(){}).then(async function(pipe){
+    var parts = chunkText(text);
+    var results = [];
+    for(var i=0;i<parts.length;i++){
+      var opts = side.src ? {src_lang: side.src, tgt_lang: side.tgt} : {};
+      var out = await pipe(parts[i], opts);
+      var t = Array.isArray(out) ? out.map(function(o){return o.translation_text;}).join(' ') : (out.translation_text || '');
+      results.push(t.trim());
+    }
+    setOut(results.join('\\n'), false);
+    setBusy(false); setDot('ready','Fertig');
+  }).catch(function(err){
+    var msg = err && err.message ? err.message : String(err);
+    showErr('Übersetzungsfehler: ' + msg);
+    setBusy(false); setDot('err','Fehler');
+    setOut('', true);
   });
 }
 
@@ -568,12 +597,12 @@ window.receiveImageBase64 = async function(b64,mime){
     var t=(res.data.text||'').trim();
     if(t){var el=g('src');el.value=(el.value.trim()?el.value+'\\n\\n':'')+t;setHint('✓ '+t.length+' Zeichen erkannt');}
     else setHint('Kein Text erkannt.');
-  }catch(e){setHint('OCR-Fehler: '+e.message);}
+  }catch(e){setHint('OCR-Fehler: '+(e&&e.message?e.message:String(e)));}
 };
 
 function loadSc(src){return new Promise(function(res,rej){
   var s=document.createElement('script');s.src=src;
-  s.onload=res;s.onerror=function(){rej(new Error('Skript-Fehler'));};
+  s.onload=res;s.onerror=function(){rej(new Error('Skript-Fehler beim Laden von '+src));};
   document.head.appendChild(s);
 });}
 
